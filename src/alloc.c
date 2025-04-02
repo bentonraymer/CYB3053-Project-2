@@ -137,7 +137,14 @@ void *coalesce(free_block *block) {
  * @return A pointer to the allocated memory
  */
 void *do_alloc(size_t size) {
-    return NULL;
+    // Use sbrk to allocate more memory according to the size input in the function
+    void *ptr sbrk(size);
+    // Check to see if the allocation suceeded; if not, return null
+    if (ptr == (void *)-1) {
+        return NULL;
+    }
+    // If the allocation did succeed, the code will reach this point and will return the correct pointer
+    return ptr;
 }
 
 /**
@@ -147,8 +154,21 @@ void *do_alloc(size_t size) {
  * @return A pointer to the requested block of memory
  */
 void *tumalloc(size_t size) {
-    return NULL;
-}
+    if HEAD is NULL:
+        ptr -> do_alloc(size)
+        return ptr;
+    else:
+        for block in free_list do:
+            if size <= block.size then:
+                header -> split(block, size+sizeof(header));
+                remove_free_block(header);
+                header.size = size;
+                header.magic = 0x01234567;
+                return header + 1;
+        if no block is big enough then:
+            ptr -> do_alloc(size);
+            return ptr;
+
 
 /**
  * Allocates and initializes a list of elements for the end user
