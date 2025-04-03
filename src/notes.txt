@@ -1,0 +1,11 @@
+NOTES TO SELF AND DEFINITIONS - My brain dump as I try and think through this
+- We are only dealing with the Heap here
+- The Heap expands downwards when viewed as a chart, upwards in terms of addresses
+- We use the sbrk() function to actually allocate more memory to our program
+- There is a pre-set "Alignment" variable of 16... this is used to make sure blocks of memory are assigned starting at a multiple of 16 bytes for easier handling by the CPU
+
+
+
+HELPFUL RESOURCES
+- Explanation of Heap and sbrk - https://scottc130.medium.com/understanding-heap-memory-allocation-in-c-sbrk-and-brk-d9b95c344cbc
+
