@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 
+
 #define ALIGNMENT 16 /**< The alignment of the memory blocks */
 
 static free_block *HEAD = NULL; /**< Pointer to the first element of the free list */
@@ -137,9 +138,17 @@ void *coalesce(free_block *block) {
  * @return A pointer to the allocated memory
  */
 void *do_alloc(size_t size) {
-    // Use sbrk to allocate more memory according to the size input in the function
-    void *ptr sbrk(size);
-    // Check to see if the allocation suceeded; if not, return null
+
+    // Ensure that the input size is greater than zero
+    if (size <= 0) return NULL;
+
+    // Ensure the size is a multiple of 16, which is the alignment value.
+    size = (size + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+
+    // Use sbrk to allocate more memory according to the size input in the function. sbrk returns the new break address (pointer), which means the address the heap ends at at the bottom and breaks up the end of the heap and start of unallocated memory
+    void *ptr = sbrk(size);
+
+    // Check to see if the allocation suceeded; if not, return null. This call could fail for reasons including that the requested memory exceeds the process's limits, or if there's insufficient memory available on the system.
     if (ptr == (void *)-1) {
         return NULL;
     }
@@ -154,20 +163,54 @@ void *do_alloc(size_t size) {
  * @return A pointer to the requested block of memory
  */
 void *tumalloc(size_t size) {
-    if HEAD is NULL:
-        ptr -> do_alloc(size)
-        return ptr;
-    else:
-        for block in free_list do:
-            if size <= block.size then:
-                header -> split(block, size+sizeof(header));
-                remove_free_block(header);
-                header.size = size;
-                header.magic = 0x01234567;
-                return header + 1;
-        if no block is big enough then:
-            ptr -> do_alloc(size);
-            return ptr;
+    
+    // If the free list is empty call do_alloc to allocate new memory
+    if (HEAD == NULL) {
+        void *raw = do_alloc(size + sizeof(header));
+        // This will be taken if there was an issue with sbrk or do_alloc
+        if (raw == NULL) {
+            return NULL;
+        }
+
+        // Create header & add information
+        header *hdr = (header *)raw;
+        hdr->size = size;
+        hdr->magic = 0x01234567;
+        return (void *)(hdr + 1);
+    }
+
+    // Free list is not empty, so look for a block to allocate from
+    else {
+        free_block *block = HEAD;
+        // Loop through the list of free blocks
+        while (block != NULL) {
+            // If the block is big enough, split it and return the pointer
+            if (size + sizeof(header) <= block->size) {
+                header *hdr = (header *) split(block, size + sizeof(header));
+                // If the block was split, remove it from the free list
+                if (hdr == NULL) {
+                    remove_free_block(block);
+                    hdr = (header *) block;
+                } else {
+                    remove_free_block((free_block *) hdr);
+                }
+                // Create header & add information
+                hdr->size = size;
+                hdr->magic = 0x01234567;
+                // Return the pointer to the memory after the header
+                return (void *)(hdr + 1);
+            }
+            block = block->next;
+        }
+        // If no block was found, allocate a new one
+        void *raw = do_alloc(size + sizeof(header));
+        header *hdr = (header *)raw;
+        hdr->size = size;
+        hdr->magic = 0x01234567;
+        return (void *)(hdr + 1);
+    }
+}
+
 
 
 /**
@@ -178,7 +221,25 @@ void *tumalloc(size_t size) {
  * @return A pointer to the requested block of initialized memory
  */
 void *tucalloc(size_t num, size_t size) {
-    return NULL;
+    // Calculate the total needed size
+    size_t total_size = num * size;
+
+    // If input is 0, return NULL
+    if (total_size == 0) {
+        return NULL;
+    }
+
+    // Allocate the total size
+    void *ptr = tumalloc(total_size);
+
+    // If allocation was not successful, return NULL
+    if (ptr == NULL) {
+        return NULL;
+    }
+
+    // Initialize the allocated memory to 0
+    memset(ptr, 0, total_size);
+    return ptr;
 }
 
 /**
@@ -189,7 +250,37 @@ void *tucalloc(size_t num, size_t size) {
  * @return A new pointer containing the contents of ptr, but with the new_size
  */
 void *turealloc(void *ptr, size_t new_size) {
-    return NULL;
+    if (ptr == NULL) {
+        return tumalloc(new_size);
+    }
+
+    if (new_size == 0) {
+        tufree(ptr);
+        return NULL;
+    }
+
+    // Get the header of the block
+    header *old_header = (header *)ptr - 1;
+
+    // If the old block is big enough already, no need to allocate new block; return old pointer
+    if (old_header->size >= new_size) {
+        return ptr;
+    }
+
+    // Otherwise, allocate a new block
+    void *new_ptr = tumalloc(new_size);
+    
+    // If the allocation failed
+    if (!new_ptr) {
+        return NULL;
+    }
+
+    // Copy the old data to the new block
+    size_t copy_size = old_header->size < new_size ? old_header->size : new_size;
+    memcpy(new_ptr, ptr, copy_size);
+
+    // Return the new pointer
+    return new_ptr;
 }
 
 /**
@@ -199,4 +290,23 @@ void *turealloc(void *ptr, size_t new_size) {
  */
 void tufree(void *ptr) {
 
-}
+    // Convert the user pointer to the header pointer
+    header *hdr = (header *)((char *)ptr - sizeof(header));
+
+    // Check the magic number; take top path if it's correct
+    if (hdr->magic == 0x01234567) {
+        // Convert the user pointer to the header pointer
+        free_block *block = (free_block *)hdr;
+        // Set the size of the block to the size of the header
+        block->size = hdr->size;
+        // Insert the block at the beginning of the free list
+        block->next = HEAD;
+        HEAD = block;
+        // Coalesce the block with any surrounding free blocks
+        coalesce(block);
+    // If the magic number is not correct, print that there's memory corruption
+    } else {
+        printf("MEMORY CORRUPTION DETECTED\n");
+        abort();
+    }
+    }
